@@ -2,12 +2,13 @@ import { useMyPresence, useOthers } from "@/liveblocks.config"
 import LiveCursor from "./cursor/LiveCursor"
 import { useCallback, useEffect, useState } from "react";
 import CursorChat from "./cursor/CursorChat";
-import { CursorMode, CursorState, Reaction } from "@/types/type";
+import { CursorMode, CursorState, Reaction, ReactionEvent } from "@/types/type";
 import ReactionSelector from "./reaction/ReactionButton";
 import FlyingReaction from "./reaction/FlyingReaction";
 import useInterval from "@/hooks/useInterval";
+import { useBroadcastEvent, useEventListener } from "@liveblocks/react";
 
-const REACTION_TIMEOUT = 4000; 
+const REACTION_TIMEOUT = 4000;
 
 const Live = () => {
   const others = useOthers();
@@ -19,8 +20,10 @@ const Live = () => {
 
   const [reactions, setReactions] = useState<Reaction[]>([]);
 
+  const broadcast = useBroadcastEvent();
+
   useInterval(() => {
-    if(cursorState.mode === CursorMode.Reaction && cursorState.isPressed && cursor) {
+    if (cursorState.mode === CursorMode.Reaction && cursorState.isPressed && cursor) {
       setReactions((reactions) =>
         reactions.concat([
           {
@@ -30,13 +33,31 @@ const Live = () => {
           },
         ])
       );
+      broadcast({
+        x: cursor.x,
+        y: cursor.y,
+        value: cursorState.reaction,
+      });
     }
   }, 100);
+
+  useEventListener((eventData) => {
+    const event = eventData.event as ReactionEvent;
+    setReactions((reactions) =>
+      reactions.concat([
+        {
+          point: { x: event.x, y: event.y },
+          value: event.value,
+          timestamp: Date.now(),
+        },
+      ])
+    );
+  });
 
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setReactions((reactions) => 
+      setReactions((reactions) =>
         reactions.filter((reaction) => now - reaction.timestamp < REACTION_TIMEOUT)
       );
     }, 20);
@@ -46,11 +67,11 @@ const Live = () => {
 
   const handlePointerMove = useCallback((event: React.PointerEvent) => {
     event.preventDefault();
-  
+
     if (cursor == null || cursorState.mode !== CursorMode.ReactionSelector) {
       const x = event.clientX - event.currentTarget.getBoundingClientRect().x;
       const y = event.clientY - event.currentTarget.getBoundingClientRect().y;
-  
+
       updateMyPresence({ cursor: { x, y } });
     }
   }, [cursor, cursorState.mode, updateMyPresence]);
@@ -96,13 +117,13 @@ const Live = () => {
         });
       }
     }
-    
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "/") {
         event.preventDefault();
       }
     }
-    
+
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("keydown", onKeyDown);
 
@@ -113,10 +134,10 @@ const Live = () => {
   }, [updateMyPresence]);
 
   const setReaction = useCallback((reaction: string) => {
-    setCursorState({ 
-      mode: CursorMode.Reaction, 
-      reaction, 
-      isPressed: false 
+    setCursorState({
+      mode: CursorMode.Reaction,
+      reaction,
+      isPressed: false
     });
   }, []);
 
@@ -133,7 +154,7 @@ const Live = () => {
       <div className="absolute inset-0 pointer-events-none">
         {reactions.map((reaction) => (
           <FlyingReaction
-            key={reaction.timestamp.toString()}
+            key={reaction.timestamp.toString()} //key={`${reaction.timestamp.toString()}-${index}`} but it starts tweaking
             x={reaction.point.x}
             y={reaction.point.y}
             timestamp={reaction.timestamp}
@@ -156,7 +177,7 @@ const Live = () => {
           setReaction={setReaction}
         />
       )}
-      
+
       <LiveCursor others={others} />
     </div>
   )
